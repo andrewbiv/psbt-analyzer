@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PSBT Analyzer</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header>
+  <h1>PSBT Analyzer</h1>
+  <p class="sub">Parse, analyze, and optimize Bitcoin PSBTs. Network: <code>{{ network }}</code></p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. Load a PSBT</h2>
+    <div class="tabs" id="inputTabs">
+      <button data-tab="paste" class="tab active">Paste text</button>
+      <button data-tab="upload" class="tab">Upload file</button>
+    </div>
+    <div class="tab-panel" data-panel="paste">
+      <textarea id="psbtText" rows="6" placeholder="Paste base64 or hex PSBT here (base64 typically starts with cHNidP)"></textarea>
+      <button id="analyzeBtn" class="primary">Analyze</button>
+    </div>
+    <div class="tab-panel hidden" data-panel="upload">
+      <input id="psbtFile" type="file" accept=".psbt,.txt,.bin,*" />
+      <button id="analyzeFileBtn" class="primary">Analyze file</button>
+    </div>
+    <p id="errorBox" class="error hidden"></p>
+  </section>
+
+  <section class="card hidden" id="reportSection">
+    <h2>2. Report</h2>
+    <div id="summary"></div>
+
+    <h3>Inputs</h3>
+    <div class="table-wrap"><table id="inputsTable"></table></div>
+
+    <h3>Outputs</h3>
+    <div class="table-wrap"><table id="outputsTable"></table></div>
+
+    <h3>Fees</h3>
+    <div id="feesBlock"></div>
+
+    <h3>Edit &amp; re-run</h3>
+    <p class="muted">Structural edits (drop inputs, edit output values, add output) are applied server-side and the PSBT is re-serialized and re-analyzed. Any edit that changes the tx structure strips existing partial signatures.</p>
+    <div id="editControls"></div>
+    <div class="edit-add-row">
+      <input id="addOutAddr" placeholder="Address (bc1..., 1..., 3...)" />
+      <input id="addOutValue" type="number" min="0" step="1" placeholder="value (sats)" />
+      <button id="addOutBtn">Add output</button>
+    </div>
+    <div class="edit-raw">
+      <details>
+        <summary>Raw base64 / hex (advanced)</summary>
+        <textarea id="rawEdit" rows="4"></textarea>
+        <button id="rawReanalyzeBtn">Re-analyze raw</button>
+      </details>
+    </div>
+    <p class="muted" id="editNotes"></p>
+  </section>
+
+  <section class="card hidden" id="simSection">
+    <h2>3. Coin-selection simulation</h2>
+    <p class="muted">UTXO pool and payment targets are pre-filled from the analyzed PSBT. You can add UTXOs to the pool to see how different strategies would select inputs for the same targets.</p>
+
+    <h3>UTXO pool</h3>
+    <div class="table-wrap"><table id="simUtxos"></table></div>
+    <div class="edit-add-row">
+      <input id="addUtxoOutpoint" placeholder="txid:vout" />
+      <input id="addUtxoValue" type="number" min="0" step="1" placeholder="value (sats)" />
+      <select id="addUtxoType">
+        <option>P2WPKH</option>
+        <option>P2TR</option>
+        <option>P2SH-P2WPKH</option>
+        <option>P2PKH</option>
+        <option>P2WSH</option>
+      </select>
+      <button id="addUtxoBtn">Add UTXO</button>
+    </div>
+
+    <h3>Targets</h3>
+    <div class="table-wrap"><table id="simTargets"></table></div>
+
+    <div class="sim-controls">
+      <label>Fee rate (sat/vB) <input id="simFeeRate" type="number" min="0.1" step="0.1" value="5" /></label>
+      <label>Change type
+        <select id="simChangeType">
+          <option>P2WPKH</option>
+          <option>P2TR</option>
+          <option>P2SH-P2WPKH</option>
+          <option>P2PKH</option>
+          <option>P2WSH</option>
+        </select>
+      </label>
+      <button id="simRunBtn" class="primary">Run strategies</button>
+    </div>
+
+    <h3>Results</h3>
+    <div id="simResults"></div>
+  </section>
+</main>
+
+<footer>
+  <p class="muted"><a href="/docs">OpenAPI docs</a> &middot; Fee context from mempool.space &middot; PSBT bytes are processed locally</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
