@@ -1,0 +1,89 @@
+# PSBT Analyzer — REST / HTTP client requests
+#
+# For VS Code: install the "REST Client" extension (humao.rest-client), open
+# this file, set @baseUrl if needed, and click "Send Request" above a block.
+# IntelliJ / WebStorm: built-in HTTP Client supports the same format.
+#
+# Start the app first:  uvicorn psbt_tool.api.main:app --reload
+#
+# @psbtB64 — minimal segwit test PSBT (same as tests.fixtures.segwit_two_output_psbt).
+# For the upload request, generate a file first, e.g.:
+#   python scripts/generate_psbt.py -i 2 -o 2 -f 10 --per-output 100000
+#   then fix the path in the upload block to match the generated .psbt name.
+
+@baseUrl = http://127.0.0.1:8000
+@psbtB64 = cHNidP8BAJoCAAAAAggW4uLrtGtr/xIVqfMXobg0EGn1UIYMNHHQWUcfrVI4AAAAAAD9/////8x3WiQ1tOMlXOUJXauDxnB7Rk3jhEdUP6+86J6yeekAAAAAAP3///8CoIYBAAAAAAAWABSRAMnSlE0WXsEZpbvKr6Sovz220aCGAQAAAAAAFgAUAyl9I9QFCgF3Us2TVtp3wkl2gX8AAAAAAAEBH7OKAQAAAAAAFgAUlW+yVGBQolDGo/B/0UJDbhpOQEkAAQEfsooBAAAAAAAWABScV2Ies/ciIwgGc2OUuFyepKaXvAAAAA==
+
+### App health
+GET {{baseUrl}}/health
+
+### Mempool: recommended fee rates (same source as the analyzer UI)
+GET {{baseUrl}}/api/fees/recommended
+
+### Analyze PSBT (JSON, base64)
+POST {{baseUrl}}/api/psbt/analyze
+Content-Type: application/json
+
+{
+  "psbt_base64": "{{psbtB64}}"
+}
+
+### Analyze PSBT (form: single field `psbt` — base64 or hex)
+POST {{baseUrl}}/api/psbt/analyze/text
+Content-Type: application/x-www-form-urlencoded
+
+psbt={{psbtB64}}
+
+### Analyze PSBT (file upload) — path is relative to this file in scripts/
+# Adjust filename if your generated file differs; create with generate_psbt.py
+POST {{baseUrl}}/api/psbt/analyze/upload
+Content-Type: multipart/form-data; boundary=----psbtBnd
+
+------psbtBnd
+Content-Disposition: form-data; name="file"; filename="local.psbt"
+Content-Type: application/octet-stream
+
+< ../generated_psbts/demo.psbt
+------psbtBnd--
+
+### Coin-sim: build a pre-filled sim request from a PSBT
+POST {{baseUrl}}/api/coin-sim/bootstrap
+Content-Type: application/json
+
+{
+  "psbt_base64": "{{psbtB64}}"
+}
+
+### Coin-sim: run selection strategies
+POST {{baseUrl}}/api/coin-sim/run
+Content-Type: application/json
+
+{
+  "utxos": [
+    {
+      "outpoint": "aabbccdd00000000000000000000000000000000000000000000000000000000:0",
+      "value_sats": 200000,
+      "script_type": "P2WPKH"
+    }
+  ],
+  "targets": [
+    {
+      "address": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+      "script_type": "P2WPKH",
+      "value_sats": 100000
+    }
+  ],
+  "change_script_type": "P2WPKH",
+  "fee_rate_sat_vb": 2.0,
+  "dust_threshold_sats": 546,
+  "strategies": ["largest_first", "smallest_first", "branch_and_bound"]
+}
+
+### Apply structured edits (no-op: empty `ops` list; add EditOp objects to mutate)
+POST {{baseUrl}}/api/psbt/apply
+Content-Type: application/json
+
+{
+  "psbt_base64": "{{psbtB64}}",
+  "ops": []
+}

@@ -41,6 +41,21 @@ def test_analyze_json(client):
     assert data["fee_comparison"]["bucket"] is not None
 
 
+def test_analyze_text_restores_plus_after_form_mangling(client):
+    """HTML form bodies decode '+' to space, which must not break base64 PSBTs."""
+    b64 = segwit_two_output_psbt()
+    broken = b64.replace("+", " ")
+    body = "psbt=" + broken
+    res = client.post(
+        "/api/psbt/analyze/text",
+        content=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["fees"]["fee_sats"] == 2_068
+
+
 def test_analyze_invalid_psbt_400(client):
     res = client.post("/api/psbt/analyze", json={"psbt_base64": "not-a-psbt"})
     assert res.status_code == 400

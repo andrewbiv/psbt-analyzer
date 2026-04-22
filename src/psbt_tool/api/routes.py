@@ -19,7 +19,7 @@ from ..core.models import (
     CoinSimResponse,
     PSBTReport,
 )
-from ..core.parser import analyze_psbt, build_report
+from ..core.parser import analyze_psbt, build_report, normalize_psbt_base64_paste, split_psbt_paste
 
 router = APIRouter(tags=["psbt"])
 
@@ -81,7 +81,7 @@ async def analyze_upload(file: UploadFile = _UPLOAD) -> PSBTReport:
         # File may be raw PSBT bytes or base64 text. Try base64 first.
         text = raw.strip().decode("ascii", errors="ignore")
         if text.startswith("cHNidP") or text.startswith("cHNid"):
-            psbt_b64 = text
+            psbt_b64 = normalize_psbt_base64_paste(text)
         else:
             psbt_b64 = base64.b64encode(raw).decode("ascii")
         _, report = analyze_psbt(psbt_b64, None, settings.network)
@@ -95,14 +95,10 @@ async def analyze_upload(file: UploadFile = _UPLOAD) -> PSBTReport:
 @router.post("/psbt/analyze/text", response_model=PSBTReport)
 async def analyze_text(psbt: str = _PSBT_FORM) -> PSBTReport:
     settings = get_settings()
-    stripped = psbt.strip()
-    is_hex = all(c in "0123456789abcdefABCDEF" for c in stripped) and len(stripped) % 2 == 0
-    _guard_size(None if is_hex else stripped, stripped if is_hex else None)
+    b64, hx = split_psbt_paste(psbt)
+    _guard_size(b64, hx)
     try:
-        if is_hex:
-            _, report = analyze_psbt(None, stripped, settings.network)
-        else:
-            _, report = analyze_psbt(stripped, None, settings.network)
+        _, report = analyze_psbt(b64, hx, settings.network)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     heuristics.annotate_change(report)

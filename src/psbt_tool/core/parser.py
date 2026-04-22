@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from typing import Any
 
 from embit.networks import NETWORKS
@@ -34,6 +35,34 @@ _NETWORK_KEYS = {
 def _network(network: str) -> dict[str, Any]:
     key = _NETWORK_KEYS.get(network.lower(), "main")
     return NETWORKS[key]
+
+
+def normalize_psbt_base64_paste(text: str) -> str:
+    """Undo ``application/x-www-form-urlencoded`` turning ``+`` into space.
+
+    Strips other whitespace (line breaks) from pasted base64. PSBT wire bytes
+    never contain unencoded ASCII spaces.
+    """
+    s = text.strip().replace(" ", "+")
+    return "".join(s.split())
+
+
+def split_psbt_paste(text: str) -> tuple[str | None, str | None]:
+    """Return ``(psbt_base64, psbt_hex)`` for :func:`_decode_psbt` — exactly one is set.
+
+    Distinguishes hex (optional internal whitespace) from base64; normalizes
+    base64 that was broken by form encoding or newlines in paste.
+    """
+    s = text.strip()
+    hex_compact = re.sub(r"\s+", "", s)
+    is_hex = (
+        len(hex_compact) > 0
+        and len(hex_compact) % 2 == 0
+        and all(c in "0123456789abcdefABCDEF" for c in hex_compact)
+    )
+    if is_hex:
+        return None, hex_compact
+    return normalize_psbt_base64_paste(s), None
 
 
 def _decode_psbt(psbt_base64: str | None, psbt_hex: str | None) -> PSBT:
