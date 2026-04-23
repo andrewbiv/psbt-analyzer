@@ -1,0 +1,25 @@
+services:
+  psbt-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: psbt-analyzer:latest
+    container_name: psbt-analyzer
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      PSBT_ASSET_ROOT: "/app"
+      # Optional: create `.env` in the project root; Compose also substitutes ${...} from it.
+      MEMPOOL_BASE_URL: ${MEMPOOL_BASE_URL:-https://mempool.space/api}
+      NETWORK: ${NETWORK:-mainnet}
+      MEMPOOL_CACHE_TTL: ${MEMPOOL_CACHE_TTL:-60}
+      MAX_PSBT_BYTES: ${MAX_PSBT_BYTES:-1048576}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

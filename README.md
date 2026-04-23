@@ -120,7 +120,7 @@ Short rationale for major tradeoffs (not an exhaustive spec).
 - Coin-selection simulator pre-filled from the parsed PSBT (outputs -> targets, inputs -> initial UTXO pool); compare strategies (largest-first, smallest-first, naive branch-and-bound).
 - Structured PSBT editor: toggle inputs, edit output amounts, re-serialize, and re-run analysis. Raw base64/hex textarea remains as a fallback.
 
-## Quick start
+## Quick Start w/o Docker
 
 ```powershell
 # 1. Create venv and install in editable mode
@@ -135,9 +135,23 @@ copy .env.example .env
 uvicorn psbt_tool.api.main:app --reload
 ```
 
+Alternately, use `scripts/run_app.bat` .
+
 Then open `http://127.0.0.1:8000/` for the web UI or `http://127.0.0.1:8000/docs` for interactive OpenAPI.
 
-Alternately, use `scripts/run_app.bat`
+## Quick Start w/ Docker
+
+From the project root, with [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed:
+
+```powershell
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8000/`. The service listens on `0.0.0.0:8000` inside the container; map a different host port with `HOST_PORT=8100` (or set `HOST_PORT` in a `.env` file next to `docker-compose.yml`).
+
+The image sets `PSBT_ASSET_ROOT=/app` so the UI can find `templates/` and `static/` next to the installed package. Without that, the index page 500s because paths are resolved from the source layout only.
+
+You can still copy `.env.example` to `.env` and edit values: Compose passes `MEMPOOL_BASE_URL`, `NETWORK`, `MEMPOOL_CACHE_TTL`, and `MAX_PSBT_BYTES` into the container. If you omit `.env`, the same defaults as `.env.example` are used.
 
 ## Generating a sample PSBT
 
@@ -194,8 +208,6 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the `.psb
   exists (for example run `python scripts/generate_psbt.py -i 2 -o 2 -f 10 --per-output 100000`
    or adjust the path in that block to match your `.psbt`).
 
-
-
 ## Backlog
 
 1. Auto collapse the import section after use
@@ -203,8 +215,6 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the `.psb
 3. Add base64 conversion of the imported file section back
 4. Add little informative hover help icons
 5. Add history functionality to let you go effectively “undo” edits to the inputs and outputs
-
-
 
 ## Trust and privacy
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -13,9 +14,22 @@ from fastapi.templating import Jinja2Templates
 from ..config import get_settings
 from .routes import router as api_router
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_TEMPLATES_DIR = _REPO_ROOT / "templates"
-_STATIC_DIR = _REPO_ROOT / "static"
+def _asset_root() -> Path:
+    """Project root in source checkout, or a fixed path in Docker / wheel installs.
+
+    In development, ``src/psbt_tool/api/main.py`` -> parents[3] is the repo root.
+    When the package is installed, ``__file__`` lives under site-packages, so
+    parents[3] is not the deploy layout; set ``PSBT_ASSET_ROOT`` to the directory
+    that contains ``templates/`` and ``static/`` (e.g. ``/app`` in the image).
+    """
+    if raw := os.getenv("PSBT_ASSET_ROOT"):
+        return Path(raw)
+    return Path(__file__).resolve().parents[3]
+
+
+_AR = _asset_root()
+_TEMPLATES_DIR = _AR / "templates"
+_STATIC_DIR = _AR / "static"
 
 
 def create_app() -> FastAPI:

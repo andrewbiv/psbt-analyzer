@@ -1,0 +1,52 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python caches / build artifacts
+__pycache__
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info
+build
+dist
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+coverage.xml
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+
+# Environment files (baked in at runtime via compose)
+.env
+.env.local
+
+# Editor / IDE
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Local data / outputs
+generated_psbts
+*.log
+*.sqlite
+*.sqlite3
+
+# Docs / dev-only files not needed in the image
+CODE_REVIEW.md
+tests
+scripts
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
