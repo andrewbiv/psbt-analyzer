@@ -72,6 +72,43 @@ main {
 .muted { color: var(--muted); }
 .hidden { display: none !important; }
 
+.subsection {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 14px;
+}
+.subsection > h3:first-child { margin-top: 0; }
+
+.card-collapsible > summary,
+.subsection > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+.card-collapsible > summary::-webkit-details-marker,
+.subsection > summary::-webkit-details-marker { display: none; }
+.card-collapsible > summary::before,
+.subsection > summary::before {
+  content: "\25B8";
+  color: var(--muted);
+  font-size: 11px;
+  width: 10px;
+  text-align: center;
+  transition: transform 0.15s ease;
+}
+.card-collapsible[open] > summary::before,
+.subsection[open] > summary::before {
+  transform: rotate(90deg);
+}
+.card-collapsible > summary > h2,
+.subsection > summary > h3 { margin: 0; }
+.card-collapsible[open] > summary { margin-bottom: 12px; }
+.subsection[open] > summary { margin-bottom: 10px; }
+
 textarea, input, select {
   width: 100%;
   padding: 10px 12px;
@@ -201,11 +238,26 @@ td.numeric, th.numeric { text-align: right; }
   font-size: 15px;
   margin-top: 2px;
 }
+.summary-cell.full {
+  grid-column: 1 / -1;
+}
+.summary-cell.full .value {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: normal;
+}
 
 #feesBlock {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
+}
+@media (max-width: 900px) {
+  #feesBlock { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  #feesBlock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .edit-add-row {

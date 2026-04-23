@@ -88,12 +88,20 @@ class UTXO(BaseModel):
     script_type: ScriptType
     address: str | None = None
     label: str | None = None
+    index: int | None = Field(
+        default=None,
+        description="PSBT input index when known (e.g. coin-sim bootstrap).",
+    )
 
 
 class PaymentTarget(BaseModel):
     address: str | None = None
     script_type: ScriptType
     value_sats: int
+    index: int | None = Field(
+        default=None,
+        description="PSBT output index when known (e.g. coin-sim bootstrap).",
+    )
 
 
 class CoinSimRequest(BaseModel):
@@ -131,13 +139,24 @@ class EditOp(BaseModel):
     """One structured edit to apply to a PSBT."""
 
     op: str = Field(
-        description="drop_input | set_output_value | drop_output | add_output",
+        description=(
+            "drop_input | add_input | set_input_value | "
+            "set_output_value | drop_output | add_output"
+        ),
     )
     input_index: int | None = None
     output_index: int | None = None
     value_sats: int | None = None
     address: str | None = None
     script_pub_key_hex: str | None = None
+    txid: str | None = Field(
+        default=None,
+        description="Prev-tx hex id for add_input; synthesized if omitted.",
+    )
+    vout: int | None = Field(
+        default=None,
+        description="Prev-tx output index for add_input; defaults to 0.",
+    )
 
 
 class ApplyRequest(BaseModel):

@@ -17,6 +17,20 @@ configured **mempool API** (fee estimates only, not the PSBT).
 optional on outputs; **coin-sim** and **editor** read or extend that same report
 (sim prefill, or apply patches and re-serialize for re-analysis).
 
+**Why this architecture:** A **single process** keeps deployment and debugging
+straightforward for a local or small-team tool: one binary to run, one log
+stream, and no cross-service versioning of request shapes. Doing all PSBT work
+**in-process** avoids shipping partial transaction bytes over extra RPC hops and
+keeps latency low for analyze → edit → re-analyze loops. The **same
+`PSBTReport` and Pydantic models** from parse through sim and editor mean the
+web UI, JSON API, and tests never drift into incompatible field names or fee
+semantics. **Mempool calls stay optional and narrow** (fee buckets only) so the
+core path remains usable offline or behind strict firewalls, and privacy stays
+simple: only fee metadata leaves the box, not the PSBT. Finally, **embit** as the
+only heavy Bitcoin dependency concentrates protocol risk: BIP-174 parsing and
+serialization are delegated to a focused library while this repo owns UX,
+heuristics, and sizing logic.
+
 ### Component graph
 
 ```mermaid
@@ -73,20 +87,20 @@ flowchart TB
 **Key components:**
 
 
-| Area                    | Location                       | Role                                                                   |
-| ----------------------- | ------------------------------ | ---------------------------------------------------------------------- |
-| HTTP app & CORS         | `psbt_tool/api/main.py`        | FastAPI factory, `GET /` + template, `GET /health`, static mount       |
-| API routes              | `psbt_tool/api/routes.py`      | Analyze (JSON / upload / form), `apply` edits, coin-sim, fees          |
-| PSBT parse & report     | `psbt_tool/core/parser.py`     | embit-based decode, `InputView` / `OutputView`, fee + weight           |
-| Script classification   | `psbt_tool/core/scripts.py`    | `scriptPubKey` → P2WPKH / P2TR / P2SH wrap / …; vsize helpers          |
-| Mempool                 | `psbt_tool/core/fees.py`       | async **httpx** client, short TTL cache, fee-rate buckets              |
-| Change heuristics       | `psbt_tool/core/heuristics.py` | Scores likely change outputs (non-guarantee)                           |
-| Coin selection          | `psbt_tool/core/coin_sim.py`   | Strategy comparison; shares script/vsize types with the parser         |
-| Structured edit         | `psbt_tool/core/editor.py`     | Mutates embit `InputScope` / `OutputScope` (source of truth for tx)    |
-| Request/response models | `psbt_tool/core/models.py`     | Pydantic models shared by API, sim, and editor                         |
-| Config                  | `psbt_tool/config.py`          | Env-backed settings (network, mempool URL, size limits)                |
-| Web UI                  | `templates/`, `static/`        | One-page tool: analyze, table views, sim, editor, raw PSBT fallback    |
-| Tests                   | `tests/`                       | pytest: fixtures, parser/editor/fees, API integration (mempool mocked) |
+| Area                    | Location                       | Role                                                                   | Advantages |
+| ----------------------- | ------------------------------ | ---------------------------------------------------------------------- | ---------- |
+| HTTP app & CORS         | `psbt_tool/api/main.py`        | FastAPI factory, `GET /` + template, `GET /health`, static mount       | One place to wire middleware, static files, and the SPA-style page; easy health checks for orchestration. |
+| API routes              | `psbt_tool/api/routes.py`      | Analyze (JSON / upload / form), `apply` edits, coin-sim, fees          | Multiple ingest shapes (JSON, form, multipart) without duplicating parse logic; OpenAPI stays accurate for scripting. |
+| PSBT parse & report     | `psbt_tool/core/parser.py`     | embit-based decode, `InputView` / `OutputView`, fee + weight           | Single pipeline from raw bytes to a stable report; warnings and fee math live next to decode. |
+| Script classification   | `psbt_tool/core/scripts.py`    | `scriptPubKey` → P2WPKH / P2TR / P2SH wrap / …; vsize helpers          | Consistent type labels and vsize estimates for parser, sim, and docs; no duplicate magic-byte tables. |
+| Mempool                 | `psbt_tool/core/fees.py`       | async **httpx** client, short TTL cache, fee-rate buckets              | Bounded outbound traffic and latency; fee “context” degrades cleanly if the API is down. |
+| Change heuristics       | `psbt_tool/core/heuristics.py` | Scores likely change outputs (non-guarantee)                           | Optional, isolated scoring—easy to read or replace without touching PSBT I/O. |
+| Coin selection          | `psbt_tool/core/coin_sim.py`   | Strategy comparison; shares script/vsize types with the parser         | Simulated fees align with analysis assumptions; educational without pretending to be a full wallet. |
+| Structured edit         | `psbt_tool/core/editor.py`     | Mutates embit `InputScope` / `OutputScope` (source of truth for tx)    | Edits round-trip through the same serializer as real wallets; invalidating sigs on structure change is explicit. |
+| Request/response models | `psbt_tool/core/models.py`     | Pydantic models shared by API, sim, and editor                         | Validation and schema at the boundary; frontend and tests consume one contract. |
+| Config                  | `psbt_tool/config.py`          | Env-backed settings (network, mempool URL, size limits)                | Tunable limits and endpoints without code changes; keeps secrets out of source. |
+| Web UI                  | `templates/`, `static/`        | One-page tool: analyze, table views, sim, editor, raw PSBT fallback    | No separate frontend build for v1; works behind simple static hosting patterns. |
+| Tests                   | `tests/`                       | pytest: fixtures, parser/editor/fees, API integration (mempool mocked) | Fast CI: core logic tested without live mempool; regressions caught on report shape. |
 
 
 ## Design Decisions

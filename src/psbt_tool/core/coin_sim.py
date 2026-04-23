@@ -230,15 +230,16 @@ def bootstrap_from_report(inputs: list, outputs: list) -> CoinSimRequest:
     payment targets. If change is flagged we exclude it from the targets.
     """
     utxos: list[UTXO] = []
-    for i in inputs:
-        if i.value_sats is None:
+    for inv in inputs:
+        if inv.value_sats is None:
             continue
         utxos.append(
             UTXO(
-                outpoint=f"{i.txid}:{i.vout}",
-                value_sats=i.value_sats,
-                script_type=i.script_type,
-                address=i.address,
+                outpoint=f"{inv.txid}:{inv.vout}",
+                value_sats=inv.value_sats,
+                script_type=inv.script_type,
+                address=inv.address,
+                index=inv.index,
             )
         )
     targets: list[PaymentTarget] = []
@@ -252,6 +253,7 @@ def bootstrap_from_report(inputs: list, outputs: list) -> CoinSimRequest:
                 address=o.address,
                 script_type=o.script_type,
                 value_sats=o.value_sats,
+                index=o.index,
             )
         )
     return CoinSimRequest(utxos=utxos, targets=targets)

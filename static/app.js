@@ -32,6 +32,21 @@
   };
   const fmtRate = (r) => (r === null || r === undefined ? "\u2014" : r.toFixed(2) + " sat/vB");
 
+  const inferScriptType = (addr) => {
+    if (!addr) return null;
+    const a = addr.trim();
+    const lower = a.toLowerCase();
+    if (lower.startsWith("bc1p") || lower.startsWith("tb1p") || lower.startsWith("bcrt1p")) return "P2TR";
+    if (lower.startsWith("bc1q") || lower.startsWith("tb1q") || lower.startsWith("bcrt1q")) {
+      return lower.length <= 45 ? "P2WPKH" : "P2WSH";
+    }
+    if (lower.startsWith("bc1") || lower.startsWith("tb1") || lower.startsWith("bcrt1")) return "P2WPKH";
+    const first = a[0];
+    if (first === "1" || first === "m" || first === "n") return "P2PKH";
+    if (first === "3" || first === "2") return "P2SH-P2WPKH";
+    return null;
+  };
+
   const bucketBadge = (bucket) => {
     const cls = {
       below_min: "bad",
@@ -60,10 +75,24 @@
   };
 
   // --- Render --------------------------------------------------------------
+  const parseMixSide = (note, label) => {
+    const m = new RegExp(`${label}:\\s*([^;]*)`, "i").exec(note || "");
+    if (!m) return "\u2014";
+    const body = m[1].trim();
+    if (!body || body === "\u2014") return "\u2014";
+    return body
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => `<span class="badge">${p}</span>`)
+      .join(" ");
+  };
+
   const renderSummary = (r) => {
     const f = r.fees;
     const cmp = r.fee_comparison || {};
-    const feeCompText = cmp.note ? cmp.note : "";
+    const inMix = parseMixSide(r.script_mix_note, "inputs");
+    const outMix = parseMixSide(r.script_mix_note, "outputs");
     const html = `
       <div class="summary-grid">
         <div class="summary-cell"><div class="label">PSBT version</div><div class="value">v${r.psbt_version}</div></div>
@@ -75,10 +104,10 @@
         <div class="summary-cell"><div class="label">Vsize</div><div class="value">${f.vsize.toFixed(1)} vB</div></div>
         <div class="summary-cell"><div class="label">Weight</div><div class="value">${f.weight} WU</div></div>
         <div class="summary-cell"><div class="label">Mempool bucket</div><div class="value">${bucketBadge(cmp.bucket)}</div></div>
+        <div class="summary-cell"><div class="label">Inputs mix</div><div class="value">${inMix}</div></div>
+        <div class="summary-cell"><div class="label">Outputs mix</div><div class="value">${outMix}</div></div>
       </div>
-      <p class="muted" style="margin-top:10px">${r.script_mix_note}</p>
-      ${feeCompText ? `<p class="muted">${feeCompText}</p>` : ""}
-      ${(r.warnings || []).length ? `<p class="muted">\u26a0\ufe0f ${r.warnings.join(" \u00b7 ")}</p>` : ""}
+      ${(r.warnings || []).length ? `<p class="muted" style="margin-top:10px">\u26a0\ufe0f ${r.warnings.join(" \u00b7 ")}</p>` : ""}
     `;
     $("#summary").innerHTML = html;
   };
@@ -89,19 +118,29 @@
         (i) => `
         <tr>
           <td>${i.index}</td>
-          <td class="mono">${i.txid}:${i.vout}</td>
           <td><span class="badge accent">${i.script_type}</span></td>
           <td class="mono">${i.address || "\u2014"}</td>
-          <td class="numeric">${fmtSats(i.value_sats)}</td>
+          <td class="numeric">${
+            i.value_sats != null
+              ? `<input type="number" min="0" step="1" value="${i.value_sats}" data-in-value="${i.index}" />`
+              : "\u2014"
+          }</td>
           <td class="numeric">${i.vsize.toFixed(1)}</td>
-          <td>${i.partial_sigs ? `<span class="badge good">${i.partial_sigs} sig</span>` : ""}${i.final_scriptwitness || i.final_scriptsig ? ' <span class="badge good">final</span>' : ""}</td>
+          <td>
+            ${
+              i.value_sats != null
+                ? `<button type="button" data-save-input="${i.index}">Save</button>`
+                : ""
+            }
+            <button type="button" class="danger" data-drop-input="${i.index}">Remove</button>
+          </td>
         </tr>`
       )
       .join("");
     $("#inputsTable").innerHTML = `
       <thead><tr>
-        <th>#</th><th>Outpoint</th><th>Type</th><th>Address</th>
-        <th class="numeric">Value</th><th class="numeric">vsize</th><th>Status</th>
+        <th>#</th><th>Type</th><th>Address</th>
+        <th class="numeric">Value (sats)</th><th class="numeric">vsize</th><th>Actions</th>
       </tr></thead><tbody>${rows}</tbody>
     `;
   };
@@ -114,9 +153,13 @@
           <td>${o.index}</td>
           <td><span class="badge accent">${o.script_type}</span></td>
           <td class="mono">${o.address || "\u2014"}</td>
-          <td class="numeric">${fmtSats(o.value_sats)}</td>
+          <td class="numeric"><input type="number" min="0" step="1" value="${o.value_sats}" data-out-value="${o.index}" /></td>
           <td>${o.is_change_candidate ? `<span class="badge good">change? ${(o.change_confidence * 100).toFixed(0)}%</span>` : ""}
               ${(o.change_reasons || []).map((r) => `<span class="reason-pill">${r}</span>`).join("")}
+          </td>
+          <td>
+            <button type="button" data-save-output="${o.index}">Save</button>
+            <button type="button" class="danger" data-drop-output="${o.index}">Remove</button>
           </td>
         </tr>`
       )
@@ -124,7 +167,7 @@
     $("#outputsTable").innerHTML = `
       <thead><tr>
         <th>#</th><th>Type</th><th>Address</th>
-        <th class="numeric">Value</th><th>Heuristic</th>
+        <th class="numeric">Value (sats)</th><th>Heuristic</th><th>Actions</th>
       </tr></thead><tbody>${rows}</tbody>
     `;
   };
@@ -141,38 +184,16 @@
       ["~30 min", rec.halfHourFee ? rec.halfHourFee + " sat/vB" : "\u2014"],
       ["Next block", rec.fastestFee ? rec.fastestFee + " sat/vB" : "\u2014"],
     ];
-    $("#feesBlock").innerHTML = cells
-      .map(
-        ([l, v]) =>
-          `<div class="summary-cell"><div class="label">${l}</div><div class="value">${v}</div></div>`
-      )
-      .join("");
-  };
-
-  const renderEditControls = (r) => {
-    const inputs = r.inputs
-      .map(
-        (i) => `<div class="edit-add-row">
-          <span class="badge">Input #${i.index}</span>
-          <span class="mono">${i.txid.slice(0, 10)}\u2026:${i.vout}</span>
-          <span>${fmtSats(i.value_sats)}</span>
-          <button class="danger" data-drop-input="${i.index}">Drop</button>
-        </div>`
-      )
-      .join("");
-    const outputs = r.outputs
-      .map(
-        (o) => `<div class="edit-add-row">
-          <span class="badge">Output #${o.index}</span>
-          <span>${o.script_type}</span>
-          <input type="number" min="0" step="1" value="${o.value_sats}" data-out-value="${o.index}" />
-          <button data-save-output="${o.index}">Save value</button>
-          <button class="danger" data-drop-output="${o.index}">Drop</button>
-        </div>`
-      )
-      .join("");
-    $("#editControls").innerHTML = `${inputs}${outputs}`;
-    $("#rawEdit").value = r.psbt_base64;
+    const noteCell = cmp.note
+      ? `<div class="summary-cell full"><div class="label">Fee reasonableness</div><div class="value">${cmp.note}</div></div>`
+      : "";
+    $("#feesBlock").innerHTML =
+      cells
+        .map(
+          ([l, v]) =>
+            `<div class="summary-cell"><div class="label">${l}</div><div class="value">${v}</div></div>`
+        )
+        .join("") + noteCell;
   };
 
   const renderSimUtxos = () => {
@@ -180,16 +201,16 @@
       .map(
         (u, i) => `
         <tr>
-          <td class="mono">${u.outpoint}</td>
+          <td>${u.index != null ? u.index : i}</td>
           <td><span class="badge accent">${u.script_type}</span></td>
           <td class="mono">${u.address || ""}</td>
-          <td class="numeric">${fmtSats(u.value_sats)}</td>
+          <td class="numeric"><input type="number" min="0" step="1" value="${u.value_sats}" data-utxo-value="${i}" /></td>
           <td><button class="danger" data-drop-utxo="${i}">Remove</button></td>
         </tr>`
       )
       .join("");
     $("#simUtxos").innerHTML = `
-      <thead><tr><th>Outpoint</th><th>Type</th><th>Address</th><th class="numeric">Value</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Type</th><th>Address</th><th class="numeric">Value (sats)</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody>
     `;
   };
@@ -199,14 +220,16 @@
       .map(
         (t, i) => `
         <tr>
-          <td class="mono">${t.address || ""}</td>
+          <td>${t.index != null ? t.index : i}</td>
           <td><span class="badge accent">${t.script_type}</span></td>
+          <td class="mono">${t.address || ""}</td>
           <td class="numeric"><input type="number" min="0" step="1" value="${t.value_sats}" data-target-value="${i}" /></td>
+          <td><button type="button" class="danger" data-drop-target="${i}">Remove</button></td>
         </tr>`
       )
       .join("");
     $("#simTargets").innerHTML = `
-      <thead><tr><th>Address</th><th>Type</th><th class="numeric">Value (sats)</th></tr></thead>
+      <thead><tr><th>#</th><th>Type</th><th>Address</th><th class="numeric">Value (sats)</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody>
     `;
   };
@@ -248,7 +271,6 @@
     renderInputs(r.inputs);
     renderOutputs(r.outputs);
     renderFees(r);
-    renderEditControls(r);
     bootstrapSim(r.psbt_base64);
   };
 
@@ -312,16 +334,27 @@
       applyOps([{ op: "set_output_value", output_index: Number(saveOut), value_sats: Number(input.value) }]);
       return;
     }
+    const saveIn = ev.target.getAttribute?.("data-save-input");
+    if (saveIn !== null && saveIn !== undefined) {
+      const input = document.querySelector(`input[data-in-value="${saveIn}"]`);
+      applyOps([{ op: "set_input_value", input_index: Number(saveIn), value_sats: Number(input.value) }]);
+      return;
+    }
     if (ev.target.id === "addOutBtn") {
       const addr = $("#addOutAddr").value.trim();
       const v = Number($("#addOutValue").value);
       if (!addr || !v) return showError("Address and value required.");
       applyOps([{ op: "add_output", address: addr, value_sats: v }]);
+      $("#addOutAddr").value = "";
+      $("#addOutValue").value = "";
     }
-    if (ev.target.id === "rawReanalyzeBtn") {
-      const val = $("#rawEdit").value.trim();
-      $("#psbtText").value = val;
-      analyzeText();
+    if (ev.target.id === "addInBtn") {
+      const addr = $("#addInAddr").value.trim();
+      const v = Number($("#addInValue").value);
+      if (!addr || !v) return showError("Address and value required.");
+      applyOps([{ op: "add_input", address: addr, value_sats: v }]);
+      $("#addInAddr").value = "";
+      $("#addInValue").value = "";
     }
   });
 
@@ -331,7 +364,6 @@
       const req = await api("/api/coin-sim/bootstrap", { psbt_base64: psbtBase64 });
       state.sim.utxos = req.utxos;
       state.sim.targets = req.targets;
-      $("#simSection").classList.remove("hidden");
       renderSimUtxos();
       renderSimTargets();
     } catch (e) {
@@ -341,14 +373,32 @@
   };
 
   $("#addUtxoBtn").addEventListener("click", () => {
-    const outpoint = $("#addUtxoOutpoint").value.trim();
+    const address = $("#addUtxoAddress").value.trim();
     const value = Number($("#addUtxoValue").value);
-    const script_type = $("#addUtxoType").value;
-    if (!outpoint || !value) return;
-    state.sim.utxos.push({ outpoint, value_sats: value, script_type });
-    $("#addUtxoOutpoint").value = "";
+    if (!address) return showError("UTXO address required.");
+    if (!value || value < 0) return showError("UTXO value required.");
+    const script_type = inferScriptType(address);
+    if (!script_type) return showError(`Unable to infer script type from address: ${address}`);
+    clearError();
+    const outpoint = `manual:${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    state.sim.utxos.push({ outpoint, value_sats: value, script_type, address });
+    $("#addUtxoAddress").value = "";
     $("#addUtxoValue").value = "";
     renderSimUtxos();
+  });
+
+  $("#addTargetBtn").addEventListener("click", () => {
+    const address = $("#addTargetAddress").value.trim();
+    const value = Number($("#addTargetValue").value);
+    if (!address) return showError("Target address required.");
+    if (!value || value < 0) return showError("Target value required.");
+    const script_type = inferScriptType(address);
+    if (!script_type) return showError(`Unable to infer script type from address: ${address}`);
+    clearError();
+    state.sim.targets.push({ script_type, value_sats: value, address });
+    $("#addTargetAddress").value = "";
+    $("#addTargetValue").value = "";
+    renderSimTargets();
   });
 
   document.addEventListener("click", (ev) => {
@@ -356,13 +406,24 @@
     if (idx !== null && idx !== undefined) {
       state.sim.utxos.splice(Number(idx), 1);
       renderSimUtxos();
+      return;
+    }
+    const tidx = ev.target.getAttribute?.("data-drop-target");
+    if (tidx !== null && tidx !== undefined) {
+      state.sim.targets.splice(Number(tidx), 1);
+      renderSimTargets();
     }
   });
 
   document.addEventListener("input", (ev) => {
-    const idx = ev.target.getAttribute?.("data-target-value");
-    if (idx !== null && idx !== undefined) {
-      state.sim.targets[Number(idx)].value_sats = Number(ev.target.value);
+    const tidx = ev.target.getAttribute?.("data-target-value");
+    if (tidx !== null && tidx !== undefined) {
+      state.sim.targets[Number(tidx)].value_sats = Number(ev.target.value);
+      return;
+    }
+    const uidx = ev.target.getAttribute?.("data-utxo-value");
+    if (uidx !== null && uidx !== undefined) {
+      state.sim.utxos[Number(uidx)].value_sats = Number(ev.target.value);
     }
   });
 
@@ -381,4 +442,7 @@
       showError(e.message);
     }
   });
+
+  renderSimUtxos();
+  renderSimTargets();
 })();

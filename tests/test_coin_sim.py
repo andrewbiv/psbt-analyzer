@@ -55,6 +55,8 @@ def test_bootstrap_from_psbt_report():
     req = bootstrap_from_report(report.inputs, report.outputs)
     # One known input becomes a UTXO in the pool.
     assert len(req.utxos) == 1
+    assert req.utxos[0].index == 0
     # Non-change payment output becomes a target. Change is excluded.
     assert len(req.targets) == 1
     assert req.targets[0].value_sats == 50_000
+    assert req.targets[0].index == 0

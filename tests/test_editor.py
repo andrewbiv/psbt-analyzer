@@ -53,6 +53,36 @@ def test_add_output_by_address():
     assert any(o.value_sats == 25_000 and o.address == P2WPKH_2 for o in report.outputs)
 
 
+def test_set_input_value_updates_totals():
+    b64 = segwit_two_output_psbt(input_value=200_000, pay_value=50_000, change_value=147_932)
+    psbt = _decode(b64)
+    psbt, notes = apply_ops(
+        psbt, [EditOp(op="set_input_value", input_index=0, value_sats=250_000)]
+    )
+    report = build_report(psbt, network="mainnet")
+    assert report.inputs[0].value_sats == 250_000
+    assert report.fees.total_in_sats == 250_000
+    # Outputs unchanged; fee grew by the same amount.
+    assert report.fees.total_out_sats == 50_000 + 147_932
+    assert any("Set input 0 value" in n for n in notes)
+
+
+def test_add_input_by_address_appears_in_report():
+    b64 = segwit_two_output_psbt()
+    psbt = _decode(b64)
+    psbt, notes = apply_ops(
+        psbt,
+        [EditOp(op="add_input", address=P2WPKH_2, value_sats=75_000)],
+    )
+    report = build_report(psbt, network="mainnet")
+    assert len(report.inputs) == 2
+    new_in = report.inputs[-1]
+    assert new_in.script_type is ScriptType.P2WPKH
+    assert new_in.value_sats == 75_000
+    assert new_in.address == P2WPKH_2
+    assert any("Added input" in n for n in notes)
+
+
 def test_structure_change_strips_signatures(monkeypatch):
     # Build a PSBT and plant a fake partial sig and finalization so we can
     # check the editor strips them on structure-changing ops.
