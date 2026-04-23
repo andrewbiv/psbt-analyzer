@@ -1,35 +1,14 @@
 # PSBT Analyzer
 
-A Bitcoin PSBT analysis and optimization tool. Paste, upload, or POST a PSBT
-and get a human-readable breakdown of inputs, outputs, script types, weight,
-fees, and change heuristics. Compare coin-selection strategies and edit the
-PSBT (structured or raw) with live re-analysis.
+A Bitcoin PSBT analysis and optimization tool. Paste, upload, or POST a PSBT and get a human-readable breakdown of inputs, outputs, script types, weight, fees, and change heuristics. Compare coin-selection strategies and edit the PSBT (structured or raw) with live re-analysis.
 
 ## Architecture
 
-The app is a **single Python service**: **FastAPI** exposes JSON endpoints and
-serves a **Jinja2 + static HTML/JS** front end from the same process. All PSBT
-work happens **in-process**; the only network dependency for v1 is the
-configured **mempool API** (fee estimates only, not the PSBT).
+The app is a **single Python service**: **FastAPI** exposes JSON endpoints and serves a **Jinja2 + static HTML/JS** front end from the same process. All PSBT work happens **in-process**; the only network dependency for v1 is the configured **mempool API** (fee estimates only, not the PSBT).
 
-**Data flow (high level):** PSBT in → `api.routes` (validation / decode) →
-`core.parser` + **embit** → `PSBTReport` + mempool fee comparison; **heuristics**
-optional on outputs; **coin-sim** and **editor** read or extend that same report
-(sim prefill, or apply patches and re-serialize for re-analysis).
+**Data flow (high level):** PSBT in → `api.routes` (validation / decode) → `core.parser` + **embit** → `PSBTReport` + mempool fee comparison; **heuristics** optional on outputs; **coin-sim** and **editor** read or extend that same report (sim prefill, or apply patches and re-serialize for re-analysis).
 
-**Why this architecture:** A **single process** keeps deployment and debugging
-straightforward for a local or small-team tool: one binary to run, one log
-stream, and no cross-service versioning of request shapes. Doing all PSBT work
-**in-process** avoids shipping partial transaction bytes over extra RPC hops and
-keeps latency low for analyze → edit → re-analyze loops. The **same
-`PSBTReport` and Pydantic models** from parse through sim and editor mean the
-web UI, JSON API, and tests never drift into incompatible field names or fee
-semantics. **Mempool calls stay optional and narrow** (fee buckets only) so the
-core path remains usable offline or behind strict firewalls, and privacy stays
-simple: only fee metadata leaves the box, not the PSBT. Finally, **embit** as the
-only heavy Bitcoin dependency concentrates protocol risk: BIP-174 parsing and
-serialization are delegated to a focused library while this repo owns UX,
-heuristics, and sizing logic.
+**Why this architecture:** A **single process** keeps deployment and debugging straightforward for a local or small-team tool: one binary to run, one log stream, and no cross-service versioning of request shapes. Doing all PSBT work **in-process** avoids shipping partial transaction bytes over extra RPC hops and keeps latency low for analyze → edit → re-analyze loops. The **same** `PSBTReport` **and Pydantic models** from parse through sim and editor mean the web UI, JSON API, and tests never drift into incompatible field names or fee semantics. **Mempool calls stay optional and narrow** (fee buckets only) so the core path remains usable offline or behind strict firewalls, and privacy stays simple: only fee metadata leaves the box, not the PSBT. Finally, **embit** as the only heavy Bitcoin dependency concentrates protocol risk: BIP-174 parsing and serialization are delegated to a focused library while this repo owns UX, heuristics, and sizing logic.
 
 ### Component graph
 
@@ -87,20 +66,20 @@ flowchart TB
 **Key components:**
 
 
-| Area                    | Location                       | Role                                                                   | Advantages |
-| ----------------------- | ------------------------------ | ---------------------------------------------------------------------- | ---------- |
-| HTTP app & CORS         | `psbt_tool/api/main.py`        | FastAPI factory, `GET /` + template, `GET /health`, static mount       | One place to wire middleware, static files, and the SPA-style page; easy health checks for orchestration. |
+| Area                    | Location                       | Role                                                                   | Advantages                                                                                                            |
+| ----------------------- | ------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| HTTP app & CORS         | `psbt_tool/api/main.py`        | FastAPI factory, `GET /` + template, `GET /health`, static mount       | One place to wire middleware, static files, and the SPA-style page; easy health checks for orchestration.             |
 | API routes              | `psbt_tool/api/routes.py`      | Analyze (JSON / upload / form), `apply` edits, coin-sim, fees          | Multiple ingest shapes (JSON, form, multipart) without duplicating parse logic; OpenAPI stays accurate for scripting. |
-| PSBT parse & report     | `psbt_tool/core/parser.py`     | embit-based decode, `InputView` / `OutputView`, fee + weight           | Single pipeline from raw bytes to a stable report; warnings and fee math live next to decode. |
-| Script classification   | `psbt_tool/core/scripts.py`    | `scriptPubKey` → P2WPKH / P2TR / P2SH wrap / …; vsize helpers          | Consistent type labels and vsize estimates for parser, sim, and docs; no duplicate magic-byte tables. |
-| Mempool                 | `psbt_tool/core/fees.py`       | async **httpx** client, short TTL cache, fee-rate buckets              | Bounded outbound traffic and latency; fee “context” degrades cleanly if the API is down. |
-| Change heuristics       | `psbt_tool/core/heuristics.py` | Scores likely change outputs (non-guarantee)                           | Optional, isolated scoring—easy to read or replace without touching PSBT I/O. |
-| Coin selection          | `psbt_tool/core/coin_sim.py`   | Strategy comparison; shares script/vsize types with the parser         | Simulated fees align with analysis assumptions; educational without pretending to be a full wallet. |
-| Structured edit         | `psbt_tool/core/editor.py`     | Mutates embit `InputScope` / `OutputScope` (source of truth for tx)    | Edits round-trip through the same serializer as real wallets; invalidating sigs on structure change is explicit. |
-| Request/response models | `psbt_tool/core/models.py`     | Pydantic models shared by API, sim, and editor                         | Validation and schema at the boundary; frontend and tests consume one contract. |
-| Config                  | `psbt_tool/config.py`          | Env-backed settings (network, mempool URL, size limits)                | Tunable limits and endpoints without code changes; keeps secrets out of source. |
-| Web UI                  | `templates/`, `static/`        | One-page tool: analyze, table views, sim, editor, raw PSBT fallback    | No separate frontend build for v1; works behind simple static hosting patterns. |
-| Tests                   | `tests/`                       | pytest: fixtures, parser/editor/fees, API integration (mempool mocked) | Fast CI: core logic tested without live mempool; regressions caught on report shape. |
+| PSBT parse & report     | `psbt_tool/core/parser.py`     | embit-based decode, `InputView` / `OutputView`, fee + weight           | Single pipeline from raw bytes to a stable report; warnings and fee math live next to decode.                         |
+| Script classification   | `psbt_tool/core/scripts.py`    | `scriptPubKey` → P2WPKH / P2TR / P2SH wrap / …; vsize helpers          | Consistent type labels and vsize estimates for parser, sim, and docs; no duplicate magic-byte tables.                 |
+| Mempool                 | `psbt_tool/core/fees.py`       | async **httpx** client, short TTL cache, fee-rate buckets              | Bounded outbound traffic and latency; fee “context” degrades cleanly if the API is down.                              |
+| Change heuristics       | `psbt_tool/core/heuristics.py` | Scores likely change outputs (non-guarantee)                           | Optional, isolated scoring—easy to read or replace without touching PSBT I/O.                                         |
+| Coin selection          | `psbt_tool/core/coin_sim.py`   | Strategy comparison; shares script/vsize types with the parser         | Simulated fees align with analysis assumptions; educational without pretending to be a full wallet.                   |
+| Structured edit         | `psbt_tool/core/editor.py`     | Mutates embit `InputScope` / `OutputScope` (source of truth for tx)    | Edits round-trip through the same serializer as real wallets; invalidating sigs on structure change is explicit.      |
+| Request/response models | `psbt_tool/core/models.py`     | Pydantic models shared by API, sim, and editor                         | Validation and schema at the boundary; frontend and tests consume one contract.                                       |
+| Config                  | `psbt_tool/config.py`          | Env-backed settings (network, mempool URL, size limits)                | Tunable limits and endpoints without code changes; keeps secrets out of source.                                       |
+| Web UI                  | `templates/`, `static/`        | One-page tool: analyze, table views, sim, editor, raw PSBT fallback    | No separate frontend build for v1; works behind simple static hosting patterns.                                       |
+| Tests                   | `tests/`                       | pytest: fixtures, parser/editor/fees, API integration (mempool mocked) | Fast CI: core logic tested without live mempool; regressions caught on report shape.                                  |
 
 
 ## Design Decisions
@@ -138,11 +117,8 @@ Short rationale for major tradeoffs (not an exhaustive spec).
   - Change-output heuristics (with confidence label).
   - Fee reasonableness vs current mempool (via [mempool.space](https://mempool.space/docs/api/)).
   - Script types used and weight / fee implications (segwit and taproot discounts).
-- Coin-selection simulator pre-filled from the parsed PSBT (outputs -> targets,
-inputs -> initial UTXO pool); compare strategies (largest-first, smallest-first,
-naive branch-and-bound).
-- Structured PSBT editor: toggle inputs, edit output amounts, re-serialize,
-and re-run analysis. Raw base64/hex textarea remains as a fallback.
+- Coin-selection simulator pre-filled from the parsed PSBT (outputs -> targets, inputs -> initial UTXO pool); compare strategies (largest-first, smallest-first, naive branch-and-bound).
+- Structured PSBT editor: toggle inputs, edit output amounts, re-serialize, and re-run analysis. Raw base64/hex textarea remains as a fallback.
 
 ## Quick start
 
@@ -159,29 +135,23 @@ copy .env.example .env
 uvicorn psbt_tool.api.main:app --reload
 ```
 
-Then open `http://127.0.0.1:8000/` for the web UI or
-`http://127.0.0.1:8000/docs` for interactive OpenAPI.
+Then open `http://127.0.0.1:8000/` for the web UI or `http://127.0.0.1:8000/docs` for interactive OpenAPI.
+
+Alternately, use `scripts/run_app.bat`
 
 ## Generating a sample PSBT
 
-For local testing, `scripts/generate_psbt.py` writes a **synthetic unsigned PSBT**
-with P2WPKH inputs and outputs. Keys and prevout txids are **deterministic and
-not from mainnet**—use only with regtest or tools like this analyzer, not as real
-funds.
+For local testing, `scripts/generate_psbt.py` writes a **synthetic unsigned PSBT** with P2WPKH inputs and outputs. Keys and prevout txids are **deterministic and not from mainnet**—use only with regtest or tools like this analyzer, not as real funds.
 
-By default, files are written under `**generated_psbts/`** at the project root
-(the directory is created if needed; `generated_psbts/.gitignore` ignores
-`*.psbt` so generated binaries are not committed).
+By default, files are written under `**generated_psbts/`** at the project root (the directory is created if needed; `generated_psbts/.gitignore` ignores `*.psbt` so generated binaries are not committed).
 
-From the project root, with the venv activated and the package installed
-(`pip install -e .[dev]` as in Quick start):
+From the project root, with the venv activated and the package installed (`pip install -e .[dev]` as in Quick start):
 
 ```powershell
 python scripts/generate_psbt.py -i 2 -o 2 -f 10 --per-output 100000
 ```
 
-That example produces `generated_psbts\i2_o2_f10_po100000.psbt` (on Unix,
-`generated_psbts/i2_o2_f10_po100000.psbt`).
+That example produces `generated_psbts\i2_o2_f10_po100000.psbt` (on Unix, `generated_psbts/i2_o2_f10_po100000.psbt`).
 
 
 | Flag                | Meaning                                                                              |
@@ -194,30 +164,29 @@ That example produces `generated_psbts\i2_o2_f10_po100000.psbt` (on Unix,
 | `--name`            | Filename stem for `STEM.psbt`; if omitted, `iN_oM_fFEE_poSATS` (e.g. `1p5` for 1.5). |
 
 
-The script prints estimated vsize, rounded fee, and total in/out. Open the
-`.psbt` in the web UI or pass it to `POST /api/psbt/analyze`.
+The script prints estimated vsize, rounded fee, and total in/out. Open the `.psbt` in the web UI or pass it to `POST /api/psbt/analyze`.
 
 ## API
 
 
-| Method | Path                       | Purpose                                                                 |
-| ------ | -------------------------- | ----------------------------------------------------------------------- |
-| GET    | `/health`                  | Liveness: status and configured network.                                |
-| POST   | `/api/psbt/analyze`        | Analyze a PSBT: JSON with `psbt_base64` and/or `psbt_hex`.              |
+| Method | Path                       | Purpose                                                                                                                                                               |
+| ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`                  | Liveness: status and configured network.                                                                                                                              |
+| POST   | `/api/psbt/analyze`        | Analyze a PSBT: JSON with `psbt_base64` and/or `psbt_hex`.                                                                                                            |
 | POST   | `/api/psbt/analyze/text`   | Form field `psbt`: **base64** (often mislabeled “hex” in UIs) or real hex. Spaces from url-encoded `+` are fixed; prefer `POST /api/psbt/analyze` JSON to avoid that. |
-| POST   | `/api/psbt/analyze/upload` | `multipart/form-data` file `file`: raw PSBT bytes or a text file of base64 (line breaks allowed).     |
-| POST   | `/api/psbt/apply`          | Apply structured `EditOp` list; returns new base64 + `PSBTReport`.      |
-| POST   | `/api/coin-sim/bootstrap`  | Parse a PSBT and return a pre-filled `CoinSimRequest` for the sim UI.   |
-| POST   | `/api/coin-sim/run`        | Run coin-selection strategies on UTXO / target JSON.                    |
-| GET    | `/api/fees/recommended`    | Mempool-style recommended feerates (cached; see `psbt_tool.core.fees`). |
+| POST   | `/api/psbt/analyze/upload` | `multipart/form-data` file `file`: raw PSBT bytes or a text file of base64 (line breaks allowed).                                                                     |
+| POST   | `/api/psbt/apply`          | Apply structured `EditOp` list; returns new base64 + `PSBTReport`.                                                                                                    |
+| POST   | `/api/coin-sim/bootstrap`  | Parse a PSBT and return a pre-filled `CoinSimRequest` for the sim UI.                                                                                                 |
+| POST   | `/api/coin-sim/run`        | Run coin-selection strategies on UTXO / target JSON.                                                                                                                  |
+| GET    | `/api/fees/recommended`    | Mempool-style recommended feerates (cached; see `psbt_tool.core.fees`).                                                                                               |
 
 
-### HTTP file (`scripts/api.http`)
+### Testing APIs: HTTP file (`scripts/api.http`)
 
 1. Install a client: [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client)
   for **VS Code**, or use the built-in HTTP Client in **IntelliJ / WebStorm**.
 2. From the project root, start the app: `uvicorn psbt_tool.api.main:app --reload`.
-3. Open [`scripts/api.http`](scripts/api.http). If the server is not on
+3. Open `[scripts/api.http](scripts/api.http)`. If the server is not on
   `http://127.0.0.1:8000`, edit the `@baseUrl` variable at the top of the file.
 4. Send requests with “Send Request” (or your IDE’s equivalent) on each `###` block.
   Most requests use the embedded test PSBT (`@psbtB64`); no file is required for those.
@@ -225,11 +194,22 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the
   exists (for example run `python scripts/generate_psbt.py -i 2 -o 2 -f 10 --per-output 100000`
    or adjust the path in that block to match your `.psbt`).
 
+
+
+## Backlog
+
+1. Auto collapse the import section after use
+2. Add an export button for the report section
+3. Add base64 conversion of the imported file section back
+4. Add little informative hover help icons
+5. Add history functionality to let you go effectively “undo” edits to the inputs and outputs
+
+
+
 ## Trust and privacy
 
 - PSBT bytes are parsed locally in this service.
-- Only **fee rates** are fetched from the configured mempool endpoint; the PSBT
-itself never leaves the server.
+- Only **fee rates** are fetched from the configured mempool endpoint; the PSBT itself never leaves the server.
 - See `.env.example` for configuration.
 
 ## Tests
