@@ -1,9 +1,11 @@
 # PSBT Analyzer
 
 A Bitcoin PSBT analysis and optimization tool. Paste, upload, or POST a PSBT and get a human-readable breakdown of inputs, outputs, script types, weight, fees, and change heuristics. Compare coin-selection strategies and edit the PSBT (structured or raw) with live re-analysis.
-
 <details>
-<summary><strong>Architecture</strong></summary>
+<summary>
+<h2>Architecture</h2></summary>
+
+---
 
 **Summary:**
 The app is a single Python service: FastAPI exposes JSON endpoints and serves a Jinja2 + static HTML/JS front end from the same process. All PSBT work happens in-proces*; the only network dependency for v1 is the configured mempool API (fee estimates only, not the PSBT).
@@ -13,9 +15,9 @@ PSBT in → `api.routes` (validation / decode) → `core.parser` + embit → `PS
 
 **Why this architecture:**
 A single process keeps deployment and debugging straightforward for a local or small-team tool: one binary to run, one log stream, and no cross-service versioning of request shapes. Doing all PSBT work in-process avoids shipping partial transaction bytes over extra RPC hops and keeps latency low for analyze → edit → re-analyze loops. The same `PSBTReport` and Pydantic models from parse through sim and editor mean the web UI, JSON API, and tests never drift into incompatible field names or fee semantics. Mempool calls stay optional and narrow (fee buckets only) so the core path remains usable offline or behind strict firewalls, and privacy stays simple: only fee metadata leaves the box, not the PSBT. Finally, embit as the only heavy Bitcoin dependency concentrates protocol risk: BIP-174 parsing and serialization are delegated to a focused library while this repo owns UX, heuristics, and sizing logic.
-
 <details>
-<summary><strong>Component graph</strong></summary>
+<summary> 
+<h3>Component graph</h3></summary>
 
 ```mermaid
 flowchart TB
@@ -68,9 +70,9 @@ flowchart TB
 </details>
 
 
-
 <details>
-<summary><strong>Key components</strong></summary>
+<summary>
+<h3>Key components</h3></summary>
 
 
 | Area                    | Location                       | Role                                                                   | Advantages                                                                                                            |
@@ -89,9 +91,9 @@ flowchart TB
 | Tests                   | `tests/`                       | pytest: fixtures, parser/editor/fees, API integration (mempool mocked) | Fast CI: core logic tested without live mempool; regressions caught on report shape.                                  |
 </details>
 
-
 <details>
-<summary><strong>Design Decisions</strong></summary>
+<summary>
+<h3>Design Decisions</h3></summary>
 
 Short rationale for major tradeoffs (not an exhaustive spec).
 
@@ -115,9 +117,9 @@ Short rationale for major tradeoffs (not an exhaustive spec).
 - **Coin-selection sim** is didactic and reuses the same vsize helpers as analysis; it is not a production wallet selector
 - `scripts/generate_psbt.py` builds deterministic synthetic PSBTs (same fee/vsize model as the app); not spendable mainnet funds
 </details>
-
 <details>
-<summary><strong>Features</strong></summary>
+<summary>
+<h3>Features</h3></summary>
 
 - Accept PSBT via file upload, base64/hex text, or raw API body.
 - Parse and display:
@@ -133,9 +135,11 @@ Short rationale for major tradeoffs (not an exhaustive spec).
 </details>
 
 </details>
-
 <details>
-<summary><strong>Quick Start w/o Docker</strong></summary>
+<summary>
+<h2>Quick Start w/o Docker</h2></summary>
+
+---
 
 ```powershell
 # 1. Create venv and install in editable mode
@@ -155,9 +159,11 @@ Alternately, use `scripts/run_app.bat` .
 Then open `http://127.0.0.1:8000/` for the web UI or `http://127.0.0.1:8000/docs` for interactive OpenAPI.
 
 </details>
-
 <details>
-<summary><strong>Quick Start w/ Docker</strong></summary>
+<summary>
+<h2>Quick Start w/ Docker</h2></summary>
+
+---
 
 From the project root, with [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed:
 
@@ -172,9 +178,11 @@ The image sets `PSBT_ASSET_ROOT=/app` so the UI can find `templates/` and `stati
 You can still copy `.env.example` to `.env` and edit values: Compose passes `MEMPOOL_BASE_URL`, `NETWORK`, `MEMPOOL_CACHE_TTL`, and `MAX_PSBT_BYTES` into the container. If you omit `.env`, the same defaults as `.env.example` are used.
 
 </details>
-
 <details>
-<summary><strong>Generating a sample PSBT</strong></summary>
+<summary>
+<h2>Generating a sample PSBT</h2></summary>
+
+---
 
 For local testing, `scripts/generate_psbt.py` writes a **synthetic unsigned PSBT** with P2WPKH inputs and outputs. Keys and prevout txids are **deterministic and not from mainnet**—use only with regtest or tools like this analyzer, not as real funds.
 
@@ -202,9 +210,11 @@ That example produces `generated_psbts\i2_o2_f10_po100000.psbt` (on Unix, `gener
 The script prints estimated vsize, rounded fee, and total in/out. Open the `.psbt` in the web UI or pass it to `POST /api/psbt/analyze`.
 
 </details>
-
 <details>
-<summary><strong>API</strong></summary>
+<summary>
+<h2>API</h2></summary>
+
+---
 
 
 | Method | Path                       | Purpose                                                                                                                                                               |
@@ -219,7 +229,9 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the `.psb
 | GET    | `/api/fees/recommended`    | Mempool-style recommended feerates (cached; see `psbt_tool.core.fees`).                                                                                               |
 
 
-### Testing APIs: HTTP file (`scripts/api.http`)
+<details>
+<summary>
+<h3>Testing APIs: HTTP file (`scripts/api.http`)</h3></summary>
 
 1. Install a client: [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client)
   for **VS Code**, or use the built-in HTTP Client in **IntelliJ / WebStorm**.
@@ -233,9 +245,12 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the `.psb
    or adjust the path in that block to match your `.psbt`).
 
 </details>
-
+</details>
 <details>
-<summary><strong>Backlog</strong></summary>
+<summary>
+<h2>Backlog</h2></summary>
+
+---
 
 1. Auto collapse the import section after use
 2. Add an export button for the report section
@@ -244,18 +259,22 @@ The script prints estimated vsize, rounded fee, and total in/out. Open the `.psb
 5. Add history functionality to let you go effectively “undo” edits to the inputs and outputs
 
 </details>
-
 <details>
-<summary><strong>Trust and privacy</strong></summary>
+<summary>
+<h2>Trust and privacy</h2></summary>
+
+---
 
 - PSBT bytes are parsed locally in this service.
 - Only **fee rates** are fetched from the configured mempool endpoint; the PSBT itself never leaves the server.
 - See `.env.example` for configuration.
 
 </details>
-
 <details>
-<summary><strong>Tests</strong></summary>
+<summary>
+<h2>Tests</h2></summary>
+
+---
 
 ```powershell
 pytest
